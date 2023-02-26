@@ -2,7 +2,7 @@
 genetic algorithm for a scheduling problem
 
 '''
-
+import matplotlib.pyplot as plt
 import time
 import random
 import pandas as pd
@@ -232,12 +232,106 @@ def fitness_evaluate(individual,order,lineTable):
     return fitness
 
 #選擇
-def selection(population):
-    return
+def selection(population,order,lineTable):
+    '''
+    傳入族群，回傳交配池，選擇len(population)條染色體進入mating_pool
+
+    輪盤法:
+    用累計機率的方式模擬輪盤，佔比越高的染色體在輪盤上的範圍越大，越容易被選中
+
+    1.計算各自適應度，存入fitness_list
+    2.計算佔比機率 prob_list
+    3.計算累積機率 cumulative_list
+    4.以迴圈遍歷 cumulative_list ，每次迴圈產生亂數pick，
+        如果小於當前染色體的累積機率就選入mating_pool
+
+    '''
+    mating_pool = []
+    mating_pool_idx = []
+    size = len(population)
+    # size = 100000
+
+    # 計算所有染色體的適應度
+    fitness_list = [fitness_evaluate(ind,order,lineTable) for ind in population]
+
+    # 計算染色體的佔比機率
+    prob_list = [fitness/sum(fitness_list) for fitness in fitness_list]
+
+    # 計算染色體的累積機率
+    cumulative_list = []
+    for i in range(len(prob_list)):
+        current = 0
+        for j in range(0,i+1):
+            current += prob_list[j]
+        cumulative_list.append(current)
+
+    # 進行選擇
+    for i in range(size):
+        pick = random.uniform(0,1)
+        for j in range(len(cumulative_list)):
+            if pick < cumulative_list[j]:
+                mating_pool_idx.append(j)
+                mating_pool.append(population[j])
+                break
+
+    # # debug
+    # for i in range(len(fitness_list)):
+    #     fit = round(fitness_list[i],3)
+    #     prob = round(prob_list[i],3)
+    #     add = round(cumulative_list[i],3)
+    #     sum_fit = round(sum(fitness_list),3)
+    #     sum_prob = round(sum(prob_list),3)
+    #     print(f'{i} fitness:{fit}\t\t佔比:{prob}\t\t累積機率:{add}')
+    # print(f"總和:{sum_fit}\t\t總和:{sum_prob}")
+
+    # for i in set(mating_pool_idx):
+    #     print(f"染色體:{i}\t數量:{mating_pool.count(mating_pool[i])}")
+    # quit()
+
+    return mating_pool
 
 #交配
-def crossover(mating_pool):
-    return
+def crossover(mating_pool,POPULATION_SIZE,CROSSOVER_RATE):
+    '''
+    1.以迴圈跑到 POPULATION_SIZE，並且每次迴圈一次都從 mating_pool 取出兩個個體 (step=2)
+    2.產生隨機值
+        大於突變率:直接將 parent 複製進 offspring
+        小於於突變率:進行交配產生兩個 child 個體
+            a.產生突變點 cut point
+            b.保留 parent1 從頭到 cut point 的基因
+            c.剩餘部分由 parent2 以"不跟前面重複"的方式取出基因補齊
+            d.以此類推產生 child2
+
+    '''
+    offspring = []
+
+    for i in range(0,POPULATION_SIZE,2):
+        # 取出父母
+        parent1,parent2 = mating_pool[i],mating_pool[i+1]
+
+        # 產生亂數
+        cut_point = random.randint(0,len(parent1)-1)
+
+        if random.random() < CROSSOVER_RATE:
+            # 產生 child1
+            child1 = parent1[:cut_point]
+            for gene in parent2:
+                if gene not in child1:
+                    child1.append(gene)
+
+            # 產生 child2
+            child2 = parent2[:cut_point]
+            for gene in parent1:
+                if gene not in child2:
+                    child2.append(gene)
+        else:
+            # 直接複製父母
+            child1,child2 = parent1,parent2
+
+        # 加入 offspring
+        offspring.extend([child1,child2])
+
+    return offspring
 
 #突變
 def mutation(population):
@@ -247,7 +341,8 @@ def mutation(population):
 def main():
 
     POPULATION_SIZE = 40
-    MAX_GENERATION = 10
+    MAX_GENERATION = 30
+    CROSSOVER_RATE = 0.8
     MUTATION_RATE = 0.2
     LOST = [3,3,3,3]
 
@@ -266,7 +361,7 @@ def main():
     print('讀取製程資訊...')
     fillTable_path = './input_data/待填工時表單-20221121-2-2-2-3.xlsx'
     typeTable_path = './input_data/福佑電機製造部工時總攬資料_V3.xlsx'
-    order = pd.read_excel('./input_data/製令單_1121-1125 - 少.xlsx')
+    order = pd.read_excel('./input_data/製令單_1121-1125.xlsx')
     typeTable = pd.read_excel(typeTable_path,skiprows=1)
     dailySheet = generate_dailySheet(fillTable_path,LOST)
 
@@ -302,7 +397,7 @@ def main():
     for i in range(POPULATION_SIZE):
 
         individual = init_individual(order,manuTable)
-        while(check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_path)!=True):
+        while(not check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_path)):
             individual = init_individual(order,manuTable)
 
         # print(f'產生第{individual_num}個可行解')
@@ -312,7 +407,7 @@ def main():
 
     # for individual in population:
     #     print(individual)
-
+    # quit()
 
     '''
     演算法演化
@@ -326,11 +421,12 @@ def main():
 
     '''
 
+    # 紀錄每代最佳 fitness
+    best_fitness_list = []
     print(f'\n[{round(time.process_time(),2)}s] 開始演化世代')
     for generation in range(MAX_GENERATION):
 
-        print('計算適應度...')
-
+        # print('計算適應度...')
         fitness_list = []
         for individual in population:
             fitness = fitness_evaluate(individual,order,lineTable)
@@ -338,23 +434,46 @@ def main():
 
         best_fitness = max(fitness_list)
 
-        print(f'generation:{generation} best fitness = {best_fitness}')
-        break
+        best_fitness_list.append(best_fitness)
+        print(f'generation:{generation+1} best fitness = {best_fitness}')
 
-        mating_pool = selection(population)
+        #seletion
+        mating_pool = selection(population,order,lineTable)
 
-        offspring = crossover(mating_pool)
+        # for p in mating_pool:
+        #     print(p)
+
+        #crossover
+        offspring = crossover(mating_pool,POPULATION_SIZE,CROSSOVER_RATE)
+
+        # print()
+        # for p in offspring:
+        #     print(p)
+
+        # break
+        # population = mutation(population)
 
         population = offspring
 
-        population = mutation(population)
+    feasib_ok = []
+    for i in range(len(population)):
+        individual = population[i]
+        if check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_path):
+           feasib_ok.append(individual)
+    for individual in feasib_ok:
+        print(individual)
+    print(len(feasib_ok))
+
+    plt.plot(best_fitness_list)
+    plt.savefig('./test.jpg')
 
     print(f'\n[{round(time.process_time(),2)}s] 結束')
 
-T = 1
-for i in range(2):
-    print('==========================================')
-    print(f'\n[{round(time.process_time(),2)}s] 演算法執行第{T}次:')
-    main()
-    T += 1
+if __name__ == "__main__":
+    T = 1
+    for i in range(1):
+        print('==========================================')
+        print(f'\n[{round(time.process_time(),2)}s] 演算法執行第{T}次:')
+        main()
+        T += 1
 
