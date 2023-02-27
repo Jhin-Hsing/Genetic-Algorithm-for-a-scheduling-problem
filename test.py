@@ -27,8 +27,13 @@ import numpy as np
 
 import matplotlib.pyplot as plt
 
-data = [1, 3, 5, 2, 7, 6, 8, 4]
+data = [10, 3, 5, 2, 7, 6, 8, 4]
 
-plt.plot(data)
-plt.savefig('./test.jpg')
-# plt.show()
+data.remove(data[0])
+
+for i in range(10):
+    print(random.choice([1,2,3,4,5]))
+
+# plt.plot(data)
+# plt.savefig('./test.jpg')
+# # plt.show()

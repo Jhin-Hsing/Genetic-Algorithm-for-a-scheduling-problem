@@ -219,7 +219,10 @@ def fitness_evaluate(individual,order,lineTable):
     crew_num = 1
     sum = 0
     for df in df_schedule:
+        # 有可能會出現四班沒有單可以做
+        if df.empty:continue
 
+        # 計算換線時間 setup time
         type = df['類型'][df.index[0]]
         for i in df.index:
             if type != df['類型'][i]:
@@ -334,16 +337,51 @@ def crossover(mating_pool,POPULATION_SIZE,CROSSOVER_RATE):
     return offspring
 
 #突變
-def mutation(population):
-    return
+def mutation(population,MUTATION_RATE):
+    '''
+    為了拓展解空間，隨機進行突變
+
+    1.遍歷整個族群並產生隨機值，低於突變率進行突變操作
+    2.產生兩個突變點，突變點位置"不能"是工班代號，即Xn
+    3.交換基因
+
+    '''
+
+    for i in range(len(population)):
+        if random.random() < MUTATION_RATE:
+            individual = population[i]
+            # print(individual)
+
+            muta_p1 = random.randint(1,len(individual)-1)
+            while(type(individual[muta_p1])!=int):
+                muta_p1 = random.randint(1,len(individual)-1)
+
+
+            muta_p2 = random.randint(1,len(individual)-1)
+            while(type(individual[muta_p2])!=int):
+                muta_p2 = random.randint(1,len(individual)-1)
+
+            individual[muta_p1],individual[muta_p2] = \
+                individual[muta_p2],individual[muta_p1]
+
+            # print(individual)
+            population[i] = individual
+
+            # print()
+
+    # for individual in population:
+    #     print(individual)
+    # quit()
+
+    return population
 
 #主程式
 def main():
 
     POPULATION_SIZE = 40
-    MAX_GENERATION = 30
+    MAX_GENERATION = 100
     CROSSOVER_RATE = 0.8
-    MUTATION_RATE = 0.2
+    MUTATION_RATE = 0.01
     LOST = [3,3,3,3]
 
     '''
@@ -361,7 +399,7 @@ def main():
     print('讀取製程資訊...')
     fillTable_path = './input_data/待填工時表單-20221121-2-2-2-3.xlsx'
     typeTable_path = './input_data/福佑電機製造部工時總攬資料_V3.xlsx'
-    order = pd.read_excel('./input_data/製令單_1121-1125.xlsx')
+    order = pd.read_excel('./input_data/製令單_1121-1125 - 少.xlsx')
     typeTable = pd.read_excel(typeTable_path,skiprows=1)
     dailySheet = generate_dailySheet(fillTable_path,LOST)
 
@@ -450,11 +488,12 @@ def main():
         # for p in offspring:
         #     print(p)
 
-        # break
-        # population = mutation(population)
+        offspring = mutation(offspring,MUTATION_RATE)
 
         population = offspring
 
+
+    print('可行解檢查...')
     feasib_ok = []
     for i in range(len(population)):
         individual = population[i]
@@ -462,10 +501,13 @@ def main():
            feasib_ok.append(individual)
     for individual in feasib_ok:
         print(individual)
-    print(len(feasib_ok))
+    print(f"族群總數: {POPULATION_SIZE}  可行解: {len(feasib_ok)}")
 
+    print('繪製圖表...')
     plt.plot(best_fitness_list)
-    plt.savefig('./test.jpg')
+    plt.xlabel('generation')
+    plt.ylabel('fitness')
+    plt.savefig('./output/fitness_per_generation.jpg')
 
     print(f'\n[{round(time.process_time(),2)}s] 結束')
 
