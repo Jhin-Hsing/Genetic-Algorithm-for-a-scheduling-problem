@@ -381,7 +381,7 @@ def main():
     POPULATION_SIZE = 40
     MAX_GENERATION = 100
     CROSSOVER_RATE = 0.8
-    MUTATION_RATE = 0.01
+    MUTATION_RATE = 0.05
     LOST = [3,3,3,3]
 
     '''
