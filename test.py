@@ -25,15 +25,20 @@ import numpy as np
 # return population[npr.choice(len(population), p=selection_probs)]
 
 
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 
-data = [10, 3, 5, 2, 7, 6, 8, 4]
+# import matplotlib.pyplot as plt
 
-data.remove(data[0])
+# # 兩個陣列
+# A = [1, 2, 3, 4, 5]
+# B = [2, 4, 6, 8, 10]
 
-for i in range(10):
-    print(random.choice([1,2,3,4,5]))
+# # 繪圖
+# plt.plot(A, label='Line A')
+# plt.plot(B, label='Line B')
 
-# plt.plot(data)
-# plt.savefig('./test.jpg')
-# # plt.show()
+# # 圖例
+# plt.legend()
+
+# # 顯示圖形
+# plt.show()

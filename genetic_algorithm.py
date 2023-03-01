@@ -293,87 +293,64 @@ def selection(population,order,lineTable):
 
     return mating_pool
 
+#選擇(菁英法)
+def selection_elite(population,order,lineTable):
+    mating_pool = []
+
+
+    return mating_pool
+
+
 #交配
-def crossover(mating_pool,POPULATION_SIZE,CROSSOVER_RATE):
+def crossover(parent1,parent2):
     '''
-    1.以迴圈跑到 POPULATION_SIZE，並且每次迴圈一次都從 mating_pool 取出兩個個體 (step=2)
-    2.產生隨機值
-        大於突變率:直接將 parent 複製進 offspring
-        小於於突變率:進行交配產生兩個 child 個體
-            a.產生突變點 cut point
-            b.保留 parent1 從頭到 cut point 的基因
-            c.剩餘部分由 parent2 以"不跟前面重複"的方式取出基因補齊
-            d.以此類推產生 child2
+    交配
+
+    傳入兩個個體，回傳子代
+    1.產生突變點 cut point
+    2.保留 parent1 從頭到 cut point 的基因
+    3.剩餘部分由 parent2 以"不跟前面重複"的方式取出基因補齊
+    (*)4.以此類推產生 child2
 
     '''
-    offspring = []
+    # 產生交配點
+    cut_point = random.randint(0,len(parent1)-1)
 
-    for i in range(0,POPULATION_SIZE,2):
-        # 取出父母
-        parent1,parent2 = mating_pool[i],mating_pool[i+1]
+    # 產生 child1
+    child1 = parent1[:cut_point]
+    for gene in parent2:
+        if gene not in child1:
+            child1.append(gene)
 
-        # 產生亂數
-        cut_point = random.randint(0,len(parent1)-1)
+    # # 產生 child2
+    # child2 = parent2[:cut_point]
+    # for gene in parent1:
+    #     if gene not in child2:
+    #         child2.append(gene)
 
-        if random.random() < CROSSOVER_RATE:
-            # 產生 child1
-            child1 = parent1[:cut_point]
-            for gene in parent2:
-                if gene not in child1:
-                    child1.append(gene)
-
-            # 產生 child2
-            child2 = parent2[:cut_point]
-            for gene in parent1:
-                if gene not in child2:
-                    child2.append(gene)
-        else:
-            # 直接複製父母
-            child1,child2 = parent1,parent2
-
-        # 加入 offspring
-        offspring.extend([child1,child2])
-
-    return offspring
+    return child1
 
 #突變
-def mutation(population,MUTATION_RATE):
+def mutation(individual):
     '''
-    為了拓展解空間，隨機進行突變
-
-    1.遍歷整個族群並產生隨機值，低於突變率進行突變操作
-    2.產生兩個突變點，突變點位置"不能"是工班代號，即Xn
-    3.交換基因
+    突變
+    1.產生兩個突變點，突變點位置"不能"是工班代號，即Xn
+    2.交換兩個位置的基因
 
     '''
-
-    for i in range(len(population)):
-        if random.random() < MUTATION_RATE:
-            individual = population[i]
-            # print(individual)
-
-            muta_p1 = random.randint(1,len(individual)-1)
-            while(type(individual[muta_p1])!=int):
-                muta_p1 = random.randint(1,len(individual)-1)
+    muta_p1 = random.randint(1,len(individual)-1)
+    while(type(individual[muta_p1])!=int):
+        muta_p1 = random.randint(1,len(individual)-1)
 
 
-            muta_p2 = random.randint(1,len(individual)-1)
-            while(type(individual[muta_p2])!=int):
-                muta_p2 = random.randint(1,len(individual)-1)
+    muta_p2 = random.randint(1,len(individual)-1)
+    while(type(individual[muta_p2])!=int):
+        muta_p2 = random.randint(1,len(individual)-1)
 
-            individual[muta_p1],individual[muta_p2] = \
-                individual[muta_p2],individual[muta_p1]
+    individual[muta_p1],individual[muta_p2] = \
+        individual[muta_p2],individual[muta_p1]
 
-            # print(individual)
-            population[i] = individual
-
-            # print()
-
-    # for individual in population:
-    #     print(individual)
-    # quit()
-
-    return population
+    return individual
 
 #主程式
 def main():
@@ -438,7 +415,7 @@ def main():
         while(not check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_path)):
             individual = init_individual(order,manuTable)
 
-        # print(f'產生第{individual_num}個可行解')
+        print(f'產生第{individual_num}個可行解')
 
         individual_num += 1
         population.append(individual)
@@ -461,8 +438,18 @@ def main():
 
     # 紀錄每代最佳 fitness
     best_fitness_list = []
+
+    # 設定計時器，避免迭代時間過久
+    start_time = time.time()
+
+    # 設定迭代時間上限
+    time_limit = 1200
+
     print(f'\n[{round(time.process_time(),2)}s] 開始演化世代')
     for generation in range(MAX_GENERATION):
+
+        # 確認是否超時
+        if time.time() - start_time > time_limit:break
 
         # print('計算適應度...')
         fitness_list = []
@@ -478,18 +465,59 @@ def main():
         #seletion
         mating_pool = selection(population,order,lineTable)
 
-        # for p in mating_pool:
-        #     print(p)
+        '''
+        交配
 
-        #crossover
-        offspring = crossover(mating_pool,POPULATION_SIZE,CROSSOVER_RATE)
+        1.以迴圈跑到 POPULATION_SIZE，並且每次迴圈一次都從 mating_pool 取出兩個個體 (step=2)
+        2.產生隨機值
+            大於突變率:直接將 parent 複製進 offspring
+            小於於突變率:進行交配產生兩個 child 個體
 
-        # print()
-        # for p in offspring:
-        #     print(p)
+        '''
+        # 建立子代族群 offspring
+        offspring = []
+        for i in range(0,POPULATION_SIZE,2):
 
-        offspring = mutation(offspring,MUTATION_RATE)
+            # 取出父母
+            parent1,parent2 = mating_pool[i],mating_pool[i+1]
 
+            if random.random() < CROSSOVER_RATE:
+
+                child1 = crossover(parent1,parent2)
+                child2 = crossover(parent2,parent1)
+
+                # 維持可行解
+                while(not check_feasibility(child1,order,manuTable,lineTable,dailySheet,fillTable_path)):
+                    child1 = crossover(parent1,parent2)
+
+                while(not check_feasibility(child2,order,manuTable,lineTable,dailySheet,fillTable_path)):
+                    child2 = crossover(parent2,parent1)
+
+            else:
+                # 直接複製父母
+                child1,child2 = parent1,parent2
+
+            # 加入 offspring
+            offspring.extend([child1,child2])
+
+        '''
+        突變
+        1.遍歷整個族群並產生隨機值，低於突變率進行突變操作
+
+        '''
+        for i in range(len(offspring)):
+            if random.random() < MUTATION_RATE:
+                individual = offspring[i]
+
+                individual = mutation(individual)
+
+                # 維持可行解
+                # while(not check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_path)):
+                #     individual = mutation(individual)
+
+                # offspring[i] = individual
+
+        # 取代族群
         population = offspring
 
 
@@ -508,6 +536,7 @@ def main():
     plt.xlabel('generation')
     plt.ylabel('fitness')
     plt.savefig('./output/fitness_per_generation.jpg')
+
 
     print(f'\n[{round(time.process_time(),2)}s] 結束')
 

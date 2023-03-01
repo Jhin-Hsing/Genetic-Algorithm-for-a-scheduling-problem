@@ -156,6 +156,7 @@ def create_crntTable(dailySheet,ws_fillTable):
 
     return crnTable
 
+#計算加工時間
 def manufHours(order,typeTable_path,count):
     #根據人數計算加工時間，並寫入order
     #捆綁訂單的加工時間需要保留,因此先分離兩部分，等加工時間全部算完再連接
