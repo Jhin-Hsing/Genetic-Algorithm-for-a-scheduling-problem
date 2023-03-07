@@ -33,25 +33,22 @@ def easyDecode(individual):
     schedule = []
     tmp = []
 
+
     for e in individual:
         if type(e)==str:
 
-            #tmp裡面有值才要append到schedule
-            #如果tmp非空就會回傳True
-            if tmp:
-                schedule.append(tmp)
-                tmp = []
+            # 如果是字串就把tmp append到schedule並清空
+            schedule.append(tmp)
+            tmp = []
         else:
+            # 如果是數字就 append 到 tmp
             tmp.append(e)
 
+    # 最後還要把tmp加入一次
     schedule.append(tmp)
 
-
-    # print(individual)
-    # for lst in schedule:
-    #     for e in lst:
-    #         print(e,end=' ')
-    #     print()
+    #刪除第一個空list
+    schedule = schedule[1:]
 
     return schedule
 
@@ -274,6 +271,10 @@ def init_individual(order,manuTable):
     # print(individual)
     # quit()
 
+    # 依照出貨日期排序
+    individual = sort_by_dueDay(individual,order)
+
+
     return individual
 
 #評估適應度
@@ -392,7 +393,7 @@ def sort_by_dueDay(individual,order):
     return new_individual
 
 #交配
-def crossover(p1,p2):
+def crossover(p1,p2,order,manuTable):
     child = []
 
     # 找出每個'X'的位置
@@ -411,24 +412,40 @@ def crossover(p1,p2):
     p2_seg2 = p2[p2_idx1:p2_idx2]
     p2_seg3 = p2[p2_idx2:]
 
+
     # 分段交配
     def seg_cross(s1,s2):
-
         child_seg = []
 
-        # 找到比較短的長度
-        seg_len = len(s1) if len(s1) < len(s2) else len(s2)
+        # 找到比較長的長度
+        seg_len = len(s1) if len(s1) > len(s2) else len(s2)
 
         # 產生交配點
         cut_point = random.randint(0,seg_len-1)
 
-        # 進行交配
-        child_seg = s1[:cut_point]
+        # 如果交配點索引超出 list 長度就完全複製 s1
+        if cut_point > len(s1)-1:
+            child_seg = s1
+        else:
+            # 如果沒有超過上限就複製前段
+            child_seg = s1[:cut_point+1]
 
-        for gene in s2:
-            if gene not in child_seg:
-                child_seg.append(gene)
+        # 如果是第二段，因為X3位於中間，可能會被吃掉，所以一律加到前半段後面
+        # 確保X3一定存在於染色體中，如果X3有重複後面也能處理
+        if 'X2' in s1:
+            child_seg.append('X3')
 
+        # 如果交配點索引超出 list 長度就把 s2 整段複製進來 (不能跟前面重複)
+        if cut_point > len(s2)-1:
+            for gene in s2:
+                if gene not in child_seg:
+                    child_seg.append(gene)
+
+        # 如果沒有超過上限就複製後段進來 (不能跟前面重複)
+        else:
+            for gene in s2[cut_point+1:]:
+                if gene not in child_seg:
+                    child_seg.append(gene)
         return child_seg
 
     # 刪除重複數字
@@ -453,12 +470,70 @@ def crossover(p1,p2):
 
         return new_list
 
+
+    # 補齊缺乏數字
+    def fillLack(child):
+        parent = p1
+
+        # 找出缺乏訂單
+        lack_list = []
+        for idx in parent:
+            if idx not in child:
+                lack_list.append(idx)
+
+
+        for idx in lack_list:
+
+            # 解碼child，取得完整排程表
+            schedule_child = easyDecode(child)
+            df_schedule = convert_to_dataFrame(schedule_child,order)
+
+
+            # 找出訂單的類型
+            type = order['類型'][idx]
+
+            # 計算可做工班的總工時
+            total_dict = {}
+            for crew_num in [1,2,3,4]:
+
+                # 如果工班可做，就計算總工時
+                if manuTable[f'製{crew_num}班11人'][type]==1:
+
+                    # try:
+                    total = df_schedule[crew_num-1]['加工時間'].sum()
+                    # except:
+                    #     print('!!!!!!!!!!!!!!!!!!!!!!!!!')
+                    #     print(len(df_schedule))
+                    #     quit()
+                    total_dict[crew_num] = total
+
+            # print(idx,type)
+            # print(total_dict)
+
+            # 找出總工時最小的工班
+            crew = min(total_dict,key=total_dict.get)
+
+            # 將訂單插入該工班最後面
+            schedule_child[crew-1].append(idx)
+
+            # 重新編碼回染色體
+            crew_num =  1
+            child = []
+            for s in schedule_child:
+                child.append('X'+str(crew_num))
+                crew_num += 1
+                child.extend(s)
+
+        return child
+
     child_seg1 = seg_cross(p1_seg1,p2_seg1)
     child_seg2 = seg_cross(p1_seg2,p2_seg2)
     child_seg3 = seg_cross(p1_seg3,p2_seg3)
 
     child = child_seg1 + child_seg2 + child_seg3
     child = keepOne(child)
+    child = fillLack(child)
+
 
     return child
 
@@ -528,7 +603,7 @@ def draw(lst):
 def main():
 
     POPULATION_SIZE = 40
-    MAX_GENERATION = 200
+    MAX_GENERATION = 100
     CROSSOVER_RATE = 0.8
     MUTATION_RATE = 0
     LOST = [3,3,3,3]
@@ -584,15 +659,16 @@ def main():
     individual_num = 1
     for i in range(POPULATION_SIZE):
 
-        # 維持可行解
+        # 產生染色體
         individual = init_individual(order,manuTable)
+
+        # 維持可行解
         while(not check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_path)):
             individual = init_individual(order,manuTable)
 
         individual_num += 1
 
-        # 依照出貨日進行排序
-        individual = sort_by_dueDay(individual,order)
+
 
         # 加入族群
         population.append(individual)
@@ -659,19 +735,24 @@ def main():
             if random.random() < CROSSOVER_RATE:
 
                 # 進行交配，產生個體 child1、child2
-                child1 = crossover(parent1,parent2)
-                child2 = crossover(parent2,parent1)
+                child1 = crossover(parent1,parent2,order,manuTable)
+                child2 = crossover(parent2,parent1,order,manuTable)
 
                 # 依照出貨日期進行排序
                 child1 = sort_by_dueDay(child1,order)
                 child2 = sort_by_dueDay(child2,order)
 
-                # 維持可行解
-                while(not check_feasibility2(child1,order,manuTable,lineTable,dailySheet,fillTable_path)):
-                    sort_by_dueDay(crossover(parent1,parent2),order)
+                # if not check_feasibility2(child1,order,manuTable,lineTable,dailySheet,fillTable_path):
+                #     quit()
+                # if not check_feasibility2(child2,order,manuTable,lineTable,dailySheet,fillTable_path):
+                #     quit()
 
-                while(not check_feasibility2(child2,order,manuTable,lineTable,dailySheet,fillTable_path)):
-                    sort_by_dueDay(crossover(parent2,parent1),order)
+                # 維持可行解
+                # while(not check_feasibility(child1,order,manuTable,lineTable,dailySheet,fillTable_path)):
+                #     sort_by_dueDay(crossover(parent1,parent2),order)
+
+                # while(not check_feasibility(child2,order,manuTable,lineTable,dailySheet,fillTable_path)):
+                #     sort_by_dueDay(crossover(parent2,parent1),order)
 
             else:
                 # 直接複製父母
@@ -713,8 +794,8 @@ def main():
         individual = population[i]
         if check_feasibility2(individual,order,manuTable,lineTable,dailySheet,fillTable_path):
            feasib_ok.append(individual)
-    for individual in feasib_ok:
-        print(individual)
+    # for individual in feasib_ok:
+    #     print(individual)
     print(f"族群總數: {POPULATION_SIZE}  可行解: {len(feasib_ok)}")
 
 
