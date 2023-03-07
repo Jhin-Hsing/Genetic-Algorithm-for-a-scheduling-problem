@@ -394,6 +394,16 @@ def sort_by_dueDay(individual,order):
 
 #交配
 def crossover(p1,p2,order,manuTable):
+    '''
+    使用分段交配的方式，讓同工班的編號一起交配，確保不會違反生產限制
+
+    1. 將 parent 進行分段
+    2. 同個分段進行交配
+    3. 將重複的基因隨機保留其中一個位置，其餘刪除
+    4. 補齊缺漏的基因(訂單編號)
+
+    '''
+
     child = []
 
     # 找出每個'X'的位置
@@ -552,8 +562,8 @@ def mutation(individual):
     # 每個工班各自產生突變點並突變
     for crew_list in schedule:
 
-        # 如果這班只做一張訂單則跳過
-        if len(crew_list)==1:continue
+        # 如果這班只做小於1張訂單則跳過
+        if len(crew_list)<=1:continue
 
         # 產生突變點1
         muta_p1 = random.randint(1,len(crew_list)-1)
@@ -605,8 +615,8 @@ def main():
     POPULATION_SIZE = 40
     MAX_GENERATION = 100
     CROSSOVER_RATE = 0.8
-    MUTATION_RATE = 0
-    LOST = [3,3,3,3]
+    MUTATION_RATE = 0.05
+    LOST = [2,2,2,2]
 
     '''
     資料預處理
@@ -649,7 +659,6 @@ def main():
     2. 檢查個體是否為可行解，如果不是，重複步驟1，直到生成可行解。
     3. 儲存可行解到population列表中。
     4. 重複步驟1~3，直到population列表中有足夠的個體(即POPULATION_SIZE)。
-    5. 將所有個體基因依交貨日進行排序
 
     '''
     print(datetime.now().strftime("%H:%M:%S"))
@@ -667,8 +676,6 @@ def main():
             individual = init_individual(order,manuTable)
 
         individual_num += 1
-
-
 
         # 加入族群
         population.append(individual)
@@ -741,18 +748,6 @@ def main():
                 # 依照出貨日期進行排序
                 child1 = sort_by_dueDay(child1,order)
                 child2 = sort_by_dueDay(child2,order)
-
-                # if not check_feasibility2(child1,order,manuTable,lineTable,dailySheet,fillTable_path):
-                #     quit()
-                # if not check_feasibility2(child2,order,manuTable,lineTable,dailySheet,fillTable_path):
-                #     quit()
-
-                # 維持可行解
-                # while(not check_feasibility(child1,order,manuTable,lineTable,dailySheet,fillTable_path)):
-                #     sort_by_dueDay(crossover(parent1,parent2),order)
-
-                # while(not check_feasibility(child2,order,manuTable,lineTable,dailySheet,fillTable_path)):
-                #     sort_by_dueDay(crossover(parent2,parent1),order)
 
             else:
                 # 直接複製父母
