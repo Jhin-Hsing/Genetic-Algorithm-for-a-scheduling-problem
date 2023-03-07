@@ -666,6 +666,13 @@ def main():
                 child1 = sort_by_dueDay(child1,order)
                 child2 = sort_by_dueDay(child2,order)
 
+                # 維持可行解
+                while(not check_feasibility2(child1,order,manuTable,lineTable,dailySheet,fillTable_path)):
+                    sort_by_dueDay(crossover(parent1,parent2),order)
+
+                while(not check_feasibility2(child2,order,manuTable,lineTable,dailySheet,fillTable_path)):
+                    sort_by_dueDay(crossover(parent2,parent1),order)
+
             else:
                 # 直接複製父母
                 child1,child2 = parent1,parent2
