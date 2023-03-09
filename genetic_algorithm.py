@@ -616,7 +616,7 @@ def main():
     MAX_GENERATION = 100
     CROSSOVER_RATE = 0.8
     MUTATION_RATE = 0.05
-    LOST = [2,2,2,2]
+    LOST = [3,3,3,3]
 
     '''
     資料預處理
@@ -651,6 +651,7 @@ def main():
     order = manufHours(order,typeTable_path,11)
 
     print('訂單筆數:',len(order))
+
 
     '''
     初始化族群
@@ -746,8 +747,8 @@ def main():
                 child2 = crossover(parent2,parent1,order,manuTable)
 
                 # 依照出貨日期進行排序
-                child1 = sort_by_dueDay(child1,order)
-                child2 = sort_by_dueDay(child2,order)
+                # child1 = sort_by_dueDay(child1,order)
+                # child2 = sort_by_dueDay(child2,order)
 
             else:
                 # 直接複製父母
