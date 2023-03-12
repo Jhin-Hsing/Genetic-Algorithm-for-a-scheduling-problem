@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 import time
 import random
 import pandas as pd
-from myFunc import transfor_lineTable,transfor_manuTable,orderLabel
-from myFunc import generate_dailySheet,manufHours,calculating_done
+from myFunc import transfor_lineTable,transfor_manuTable,orderLabel,createSheet
+from myFunc import generate_dailySheet,manufHours,calculating_done,splitWeek
+from myFunc import move_to_bottom,move_to_top
 pd.options.mode.chained_assignment = None
 
 #解碼成各自的排程表陣列
@@ -127,7 +128,7 @@ def check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_
                 complete = pd.to_datetime(df['預計完工'][idx], format='%Y/%m/%d')
 
                 due = df['預計出貨'][idx]
-                if complete > due:
+                if complete >= due:
                     # print(str(crew_num)+'班',idx,complete,due)
                     test2 = False
                     # quit()
@@ -196,7 +197,7 @@ def check_feasibility2(individual,order,manuTable,lineTable,dailySheet,fillTable
             complete = pd.to_datetime(df['預計完工'][idx], format='%Y/%m/%d')
 
             due = df['預計出貨'][idx]
-            if complete > due:
+            if complete >= due:
                 # print(individual)
                 print(f'{crew_num}班 訂單{idx} 超過交期 預計完工:{complete} 預計出貨:{due}')
                 test2 = False
@@ -311,8 +312,8 @@ def fitness_evaluate(individual,order,lineTable):
 
     return fitness
 
-#選擇
-def selection(population,order,lineTable):
+#輪盤選擇
+def wheel_selection(POPULATION_SIZE,population,order,lineTable):
     '''
     傳入族群，回傳交配池，選擇len(population)條染色體進入mating_pool
 
@@ -328,7 +329,7 @@ def selection(population,order,lineTable):
     '''
     mating_pool = []
     mating_pool_idx = []
-    size = len(population)
+    size = POPULATION_SIZE
     # size = 100000
 
     # 計算所有染色體的適應度
@@ -367,6 +368,40 @@ def selection(population,order,lineTable):
     # for i in set(mating_pool_idx):
     #     print(f"染色體:{i}\t數量:{mating_pool.count(mating_pool[i])}")
     # quit()
+
+    return mating_pool
+
+#菁英選擇
+def elite_selection(POPULATION_SIZE,population,order,lineTable):
+    '''
+    使用菁英法
+
+    1. 選擇20條適應度最高的染色體
+    2. 剩餘20條隨機從族群內抽
+
+    '''
+    mating_pool = []
+
+    # 計算適應度
+    fitness_list = [fitness_evaluate(ind,order,lineTable) for ind in population]
+
+    # 將染色體與適應度壓成一個list
+    population_with_fitness = list(zip(population,fitness_list))
+    
+    # 依照適應度進行排序，key 使用 tuple 中的第1個元素
+    population_with_fitness = sorted(population_with_fitness,key=lambda x:x[1],reverse=True)
+
+    # 取出前20名的染色體
+    elite_individual = population_with_fitness[:20]
+
+    # 轉換回只有染色體的 list
+    elite_individual = [x[0] for x in elite_individual]
+
+    # 隨機選擇20條染色體
+    rand_individual = random.sample(population,20)
+
+    # 由適應度最高的20條染色體加上隨機20條組成交配池
+    mating_pool = elite_individual + rand_individual
 
     return mating_pool
 
@@ -589,6 +624,173 @@ def mutation(individual):
 
     return new_individual
 
+#換線順序調整
+def dfimization(lineTable,df,crt,next):
+
+    #0. 拆出兩日工單
+    df.drop(crt.index,inplace=True)
+    df.drop(next.index,inplace=True)
+    crt_tag_1 = crt[crt['tag']==1]
+    crt_tag_0 = crt[crt['tag']==0]
+
+    #1. 對今日tag_0及下一天排序
+    crt_tag_0 = crt_tag_0.sort_values('類型')
+    crt = pd.concat([crt_tag_1,crt_tag_0])
+    next = next.sort_values('類型')
+
+
+    #2. 從tag_0中尋找今明最多類型  #! 先不管tag 直接全部一起判斷 評估哪種做法比較好
+    # crtType = list(dict.fromkeys(crt_tag_0['類型'].tolist()))
+    crtType = list(dict.fromkeys(crt['類型'].tolist()))
+
+    nextType = next['類型'].tolist()
+    most = None
+    max = 0
+
+    for t in crtType:
+        if nextType.count(t)>max:
+            max = nextType.count(t)
+            most = t
+
+    #都沒有相同類型就找最小換線時間
+    if most is None:
+        nextType = list(dict.fromkeys(nextType))
+
+        minTime = 999
+        minTypeCrt = None
+        minTypeNext = None
+
+        for i in crtType:
+            for j in nextType:
+                tmp = lineTable[i][j]
+                # print(i,j,tmp)
+                if tmp<minTime:
+                    minTime = tmp
+                    minTypeCrt = i
+                    minTypeNext = j
+
+        # print(minTime,minTypeCrt,minTypeNext)
+
+
+
+    #3. 移動最多類型或最小換線類型並標記tag為1
+    if most is not None:
+        for row in crt.index:
+            if crt['類型'][row]==most and crt['tag'][row]==0:
+                crt = move_to_bottom(crt,row)
+
+        for row in next.index:
+            if next['類型'][row]==most:
+                next=move_to_top(next,row)
+                next['tag'][row]=1
+    else:
+        for row in crt.index:
+            if crt['類型'][row]==minTypeCrt and crt['tag'][row]==0:
+                crt = move_to_bottom(crt,row)
+
+        for row in next.index:
+            if next['類型'][row]==minTypeNext:
+                next=move_to_top(next,row)
+                next['tag'][row]=1
+
+    #3. 移動最多類型並標記tag為1
+    if most!=None:
+        for row in crt.index:
+            if crt['類型'][row]==most and crt['tag'][row]==0:
+
+                crt = move_to_bottom(crt,row)
+
+        for row in next.index:
+            if next['類型'][row]==most:
+                next=move_to_top(next,row)
+                next['tag'][row]=1
+
+
+
+    #4. 合併回df
+
+    #先將這兩天合併並且重新給index
+    tmp = pd.concat([crt,next])
+    tmp.index = range(tmp.index.min(),tmp.index.max()+1,1)
+    #連接原df後再以index排序，讓它排到正確的索引
+    df = pd.concat([tmp,df])
+    df = df.sort_index()
+
+
+    # print('test:',crt['日期'][crt.index[0]],'、',next['日期'][next.index[0]])
+    # for i in crt.index:
+    #     print(i,crt['製令編號'][i],crt['日期'][i],'\t',crt['類型'][i],'\t',crt['tag'][i],)
+    # print()
+    # for i in next.index:
+    #     print(i,next['製令編號'][i],next['日期'][i],'\t',next['類型'][i],'\t',next['tag'][i],)
+    # print()
+
+
+
+    return df
+
+#換線優化
+def setupTimeOpti(individual,order,lineTable,dailySheet,fillTable_path):
+
+    # 將個體轉換成排程表
+    dfList = convert_to_dataFrame(easyDecode(individual),order)
+    
+    test=1
+    for i in range(0,len(dfList)):
+        df = dfList[i]
+
+        # df.to_excel(f'output/{test}班優化前.xlsx')
+
+        allDate = list(df['預計完工'].unique())
+
+        # print(df[['製令編號','預計開工','類型']])
+
+        df['日期'] = None
+        df['tag'] = 0
+
+        for j in df.index:
+            try:
+                tmp = df['預計完工'][j].split(' ')[0]
+            except:
+                print('!')
+                df.to_excel('./debug/fuck.xlsx')
+                quit()
+            df['日期'][j] = tmp
+
+
+        for date in allDate:
+            #擷取當日與隔日df
+            crt = df[df['日期']==date]
+
+            nextIndex = allDate.index(date)+1
+
+            next = None
+
+            if nextIndex == len(allDate):
+                break
+            else:
+                next = df[df['日期']==allDate[nextIndex]]
+
+            df = dfimization(df,crt,next)
+
+
+        df.drop(['日期','tag'],axis=1,inplace=True)
+
+        #重新計算正確預計開完工、換線時間 (換線優化後排序會調整過)
+        df = calculating_done(str(i+1)+'班',df,lineTable,dailySheet,fillTable_path)
+
+
+        dfList[i] = df
+
+        quit()
+        test+=1
+
+
+
+
+
+    return dfList
+
 #繪製圖表
 def draw(lst):
 
@@ -609,14 +811,49 @@ def draw(lst):
     plt.savefig('./output/setup_time_per_generation.jpg')
     plt.clf()
 
+
+
+#輸出最佳解
+def output(individual,order,lineTable,dailySheet,fillTable_path,LOST):
+    df_list = convert_to_dataFrame(easyDecode(individual),order)
+    c = 1
+    for i in range(len(df_list)):
+        df = df_list[i]
+        df['換線時間'] = None
+        df['選班'] = None
+        
+        type = df['類型'][df.index[0]]
+        for j in df.index:
+
+            # 計算預計完工
+            df = calculating_done(str(c)+'班',df,lineTable,dailySheet,fillTable_path)
+
+            # 選班寫入 dataframe
+            df['選班'][j] = str(c)+'班'
+
+            # setup time 寫入 dataframe
+            if type != df['類型'][j]:
+
+                df['換線時間'][j] = lineTable[type][df['類型'][j]]
+                type = df['類型'][j]
+            else:
+                df['換線時間'][j] = 0
+
+        df_list[i] = df
+        c += 1
+
+    weekTable = splitWeek(df_list)
+
+    createSheet(fillTable_path,dailySheet,weekTable,LOST)
+
 #主程式
 def main():
 
     POPULATION_SIZE = 40
     MAX_GENERATION = 100
     CROSSOVER_RATE = 0.8
-    MUTATION_RATE = 0.05
-    LOST = [3,3,3,3]
+    MUTATION_RATE = 0.1
+    LOST = [2,2,2,3]
 
     '''
     資料預處理
@@ -650,7 +887,7 @@ def main():
     print('計算製令單加工時間...')
     order = manufHours(order,typeTable_path,11)
 
-    print('訂單筆數:',len(order))
+    print('訂單筆數:',len(order))    
 
 
     '''
@@ -672,9 +909,14 @@ def main():
         # 產生染色體
         individual = init_individual(order,manuTable)
 
+        
+
         # 維持可行解
         while(not check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_path)):
             individual = init_individual(order,manuTable)
+
+        # 換線優化
+        individual = setupTimeOpti(individual,order,lineTable,dailySheet,fillTable_path)
 
         individual_num += 1
 
@@ -718,7 +960,7 @@ def main():
         print(f'generation:{generation+1} best fitness = {best_fitness}')
 
         # 使用 selection 建立配對池
-        mating_pool = selection(population,order,lineTable)
+        mating_pool = elite_selection(POPULATION_SIZE,population,order,lineTable)
 
         '''
         交配
@@ -734,10 +976,10 @@ def main():
         offspring = []
 
         # 遍歷 mating_pool，一次取出一對個體
-        for i in range(0,POPULATION_SIZE,2):
+        for i in range(POPULATION_SIZE):
 
             # 取出父母
-            parent1,parent2 = mating_pool[i],mating_pool[i+1]
+            parent1,parent2 = random.sample(mating_pool,2)
 
             # 產生隨機值，並比較交配率
             if random.random() < CROSSOVER_RATE:
@@ -753,6 +995,9 @@ def main():
             else:
                 # 直接複製父母
                 child1,child2 = parent1,parent2
+            
+            if len(offspring) >= POPULATION_SIZE:
+                break
 
             # 將子代個體加入 offspring
             offspring.extend([child1,child2])
@@ -779,12 +1024,13 @@ def main():
 
         # 取代族群
         population = offspring
+        # population = random.sample(population,20) + random.sample(offspring,20)
 
         # 輸出圖表
         draw(best_fitness_list)
 
 
-    print('可行解檢查...')
+    print(f'[{round(time.process_time(),2)}s] 可行解檢查...')
     feasib_ok = []
     for i in range(len(population)):
         individual = population[i]
@@ -792,9 +1038,21 @@ def main():
            feasib_ok.append(individual)
     # for individual in feasib_ok:
     #     print(individual)
-    print(f"族群總數: {POPULATION_SIZE}  可行解: {len(feasib_ok)}")
+    print(f"族群總數: {len(population)}  可行解: {len(feasib_ok)}")
 
 
+    # 輸出最佳解
+    print(f'[{round(time.process_time(),2)}s] 輸出最佳解...')
+    best_ind = None
+    best_fit = 0
+    for individual in feasib_ok:
+        fitness = fitness_evaluate(individual,order,lineTable)
+        if fitness>best_fit:
+            best_fit = fitness
+            best_ind = individual
+    
+    print(f"setup time:{1/best_fit}")
+    output(best_ind,order,lineTable,dailySheet,fillTable_path,LOST)
 
 
     print(f'\n[{round(time.process_time(),2)}s] 結束')

@@ -1,12 +1,10 @@
 import random
 
 
-a = []
 
-for i in range(15):
-      rnd = random.randint(0,15)
-      while(rnd in a):
-            rnd = random.randint(0,15)
 
-      a.append(rnd)
-print(a)
+a = [1,2,3,4,5]
+b = ['a','b','c','d','e']
+
+c = list(zip(a,b))
+print(c)
