@@ -3,13 +3,16 @@ genetic algorithm for a scheduling problem
 
 '''
 from datetime import datetime
+import datetime as dt
 import matplotlib.pyplot as plt
 import time
 import random
 import pandas as pd
 from myFunc import transfor_lineTable,transfor_manuTable,orderLabel,createSheet
 from myFunc import generate_dailySheet,manufHours,calculating_done,splitWeek
-from myFunc import move_to_bottom,move_to_top
+from myFunc import move_to_bottom,move_to_top,create_crntTable
+import openpyxl
+from openpyxl import load_workbook
 pd.options.mode.chained_assignment = None
 
 #解碼成各自的排程表陣列
@@ -172,7 +175,7 @@ def check_feasibility2(individual,order,manuTable,lineTable,dailySheet,fillTable
                 # print(individual)
                 print(f'{idx}: 生產限制: {type},無法於{crew_num}班加工')
 
-                df.to_excel('./debug/vio.xlsx')
+                # df.to_excel('./debug/vio.xlsx')
                 test1 = False
         crew_num += 1
 
@@ -185,7 +188,7 @@ def check_feasibility2(individual,order,manuTable,lineTable,dailySheet,fillTable
     crew_num = 1
     for df in df_schedule:
         df = calculating_done(str(crew_num)+'班',df,lineTable,dailySheet,fillTable_path)
-        # df.to_excel(f'./debug/{crew_num}.xlsx')
+        # df.to_excel(f'./debug/afet.xlsx')
         crew_num += 1
 
 
@@ -297,7 +300,9 @@ def fitness_evaluate(individual,order,lineTable):
     crew_num = 1
     sum = 0
     for df in df_schedule:
-        # 有可能會出現四班沒有單可以做
+        #d
+        # df['t'] = 0
+        # 有可能會出現工班沒有單可以做
         if df.empty:continue
 
         # 計算換線時間 setup time
@@ -305,10 +310,15 @@ def fitness_evaluate(individual,order,lineTable):
         for i in df.index:
             if type != df['類型'][i]:
                 sum += lineTable[type][df['類型'][i]]
+                #d
+                # df['t'][i] = lineTable[type][df['類型'][i]]
+
                 type = df['類型'][i]
+                
+        
+        # df.to_excel(f'./debug/{crew_num}換線.xlsx')
         crew_num += 1
     fitness = 1/sum
-
 
     return fitness
 
@@ -625,7 +635,8 @@ def mutation(individual):
     return new_individual
 
 #換線順序調整
-def dfimization(lineTable,df,crt,next):
+def df_optimization(lineTable,df,crt,next):
+
 
     #0. 拆出兩日工單
     df.drop(crt.index,inplace=True)
@@ -709,23 +720,17 @@ def dfimization(lineTable,df,crt,next):
 
     #4. 合併回df
 
-    #先將這兩天合併並且重新給index
+    #先將這兩天合併
     tmp = pd.concat([crt,next])
-    tmp.index = range(tmp.index.min(),tmp.index.max()+1,1)
-    #連接原df後再以index排序，讓它排到正確的索引
+
+    #重新給予定位用的id
+    tmp['id'] = range(crt['id'].min(),next['id'].max()+1,1)
+    
+    #連接原df後再以index排序
     df = pd.concat([tmp,df])
-    df = df.sort_index()
 
-
-    # print('test:',crt['日期'][crt.index[0]],'、',next['日期'][next.index[0]])
-    # for i in crt.index:
-    #     print(i,crt['製令編號'][i],crt['日期'][i],'\t',crt['類型'][i],'\t',crt['tag'][i],)
-    # print()
-    # for i in next.index:
-    #     print(i,next['製令編號'][i],next['日期'][i],'\t',next['類型'][i],'\t',next['tag'][i],)
-    # print()
-
-
+    #以id重新排序
+    df = df.sort_values('id')
 
     return df
 
@@ -737,28 +742,32 @@ def setupTimeOpti(individual,order,lineTable,dailySheet,fillTable_path):
     
     test=1
     for i in range(0,len(dfList)):
+
         df = dfList[i]
 
-        # df.to_excel(f'output/{test}班優化前.xlsx')
+    
+        # 給予定位用的編號
+        df['id'] = range(1, len(df)+1)
+
+        # 計算完工時間
+        df = calculating_done(str(i+1)+'班',df,lineTable,dailySheet,fillTable_path)
 
         allDate = list(df['預計完工'].unique())
-
-        # print(df[['製令編號','預計開工','類型']])
 
         df['日期'] = None
         df['tag'] = 0
 
+        # 把預計完工寫入df欄位
         for j in df.index:
-            try:
-                tmp = df['預計完工'][j].split(' ')[0]
-            except:
-                print('!')
-                df.to_excel('./debug/fuck.xlsx')
-                quit()
+            tmp = df['預計完工'][j].split(' ')[0]
             df['日期'][j] = tmp
+        
+        # print('===============')
 
-
+        # df.to_excel('./debug/before.xlsx')
         for date in allDate:
+
+
             #擷取當日與隔日df
             crt = df[df['日期']==date]
 
@@ -771,25 +780,99 @@ def setupTimeOpti(individual,order,lineTable,dailySheet,fillTable_path):
             else:
                 next = df[df['日期']==allDate[nextIndex]]
 
-            df = dfimization(df,crt,next)
+            # print(crt['日期'][crt.index[0]],next['日期'][next.index[0]])
 
+            df = df_optimization(lineTable,df,crt,next)
+        
 
-        df.drop(['日期','tag'],axis=1,inplace=True)
+        # df.to_excel('./debug/mid.xlsx')
+        # quit()
+        # 暫時註解
+        # df.drop(['日期','tag'],axis=1,inplace=True)
 
         #重新計算正確預計開完工、換線時間 (換線優化後排序會調整過)
         df = calculating_done(str(i+1)+'班',df,lineTable,dailySheet,fillTable_path)
 
-
         dfList[i] = df
+        # dfList[i].to_excel('./debug/after.xlsx')
 
-        quit()
         test+=1
 
+    # 編碼回染色體
+    new_individual = []
+    c = 1
+    for df in dfList:
+        tmp = list(df.index)
+        new_individual.append('X'+str(c))
+        new_individual.extend(tmp)
+        c += 1
+
+    # for i in easyDecode(individual):print(i)
+    # print('\n')
+    # for i in easyDecode(new_individual):print(i)
+    # quit()
+    
+    return new_individual
 
 
+#計算各班ST
+def st_calculation(individual,order,dailySheet,lineTable):
 
+    #解碼染色體
+    dfList = convert_to_dataFrame(easyDecode(individual),order)
 
-    return dfList
+    # 1.寫入數值化的出貨期限 ()"總可用工時"(從第一天到出貨前一天))
+    crew_num = 0
+    for df in dfList:
+        df['交期'] = None
+        crew_num += 1
+        for i in df.index:
+
+            # start = 第一天上班
+            start = dailySheet['日期'][0]
+
+            # end = 出貨前一天: 將預計出貨轉換為datetime，扣掉一天後轉換回str
+            end = df['預計出貨'][i].to_pydatetime()-dt.timedelta(days=1)
+            end = end.strftime('%Y/%m/%d')
+
+            # due = 交期(總工時)
+            due = dailySheet.set_index('日期')[str(crew_num)+'班'][start:end].sum()
+            df['交期'][i] = due
+    
+    # 2.計算ST
+    for df in dfList:
+        df['ST'] = None
+
+        # 定義參數，會隨著訂單改變值
+        crn_time = 0
+        crn_type = '小1-1-1-1'
+        setup_time = 0
+
+        # 遍歷所有訂單計算ST並寫入
+        for i in df.index:
+            due = df['交期'][i]
+            manu_time = df['加工時間'][i]
+            type = df['類型'][i]
+            
+            # 查詢換線時間
+            if type==crn_type:
+                setup_time = 0
+            else:
+                setup_time = lineTable[crn_type][type]
+
+            df['ST'][i] = due - crn_time - manu_time - setup_time
+
+    # 3.以ST排序訂單並編碼回染色體
+    new_individual = []
+    crew_num = 1
+    for df in dfList:
+        df = df.sort_values('ST')
+        new_individual.append('X'+str(crew_num))
+        new_individual.extend(list(df.index))
+        crew_num += 1
+    
+    return new_individual
+
 
 #繪製圖表
 def draw(lst):
@@ -810,8 +893,6 @@ def draw(lst):
     plt.ylabel('setup time')
     plt.savefig('./output/setup_time_per_generation.jpg')
     plt.clf()
-
-
 
 #輸出最佳解
 def output(individual,order,lineTable,dailySheet,fillTable_path,LOST):
@@ -849,10 +930,10 @@ def output(individual,order,lineTable,dailySheet,fillTable_path,LOST):
 #主程式
 def main():
 
-    POPULATION_SIZE = 40
+    POPULATION_SIZE = 60
     MAX_GENERATION = 100
     CROSSOVER_RATE = 0.8
-    MUTATION_RATE = 0.1
+    MUTATION_RATE = 0.08
     LOST = [2,2,2,3]
 
     '''
@@ -887,6 +968,8 @@ def main():
     print('計算製令單加工時間...')
     order = manufHours(order,typeTable_path,11)
 
+
+
     print('訂單筆數:',len(order))    
 
 
@@ -908,21 +991,27 @@ def main():
 
         # 產生染色體
         individual = init_individual(order,manuTable)
-
+        
+        # ST優化
+        individual = st_calculation(individual,order,dailySheet,lineTable)
+        
         
 
         # 維持可行解
         while(not check_feasibility(individual,order,manuTable,lineTable,dailySheet,fillTable_path)):
+
             individual = init_individual(order,manuTable)
-
-        # 換線優化
-        individual = setupTimeOpti(individual,order,lineTable,dailySheet,fillTable_path)
-
+            individual = st_calculation(individual,order,dailySheet,lineTable)
+        
         individual_num += 1
 
         # 加入族群
         population.append(individual)
 
+    # 全體進行換線優化
+    for individual in population:
+        individual = setupTimeOpti(individual,order,lineTable,dailySheet,fillTable_path)
+            
 
     '''
     演化
@@ -957,7 +1046,7 @@ def main():
 
         # 將最好 fitness 加入 best_fitness_list
         best_fitness_list.append(best_fitness)
-        print(f'generation:{generation+1} best fitness = {best_fitness}')
+        print(f'[{round(time.process_time(),2)}s] generation:{generation+1} best fitness = {round(best_fitness,5)}\tsetup time:{1/best_fitness}')
 
         # 使用 selection 建立配對池
         mating_pool = elite_selection(POPULATION_SIZE,population,order,lineTable)
@@ -987,6 +1076,14 @@ def main():
                 # 進行交配，產生個體 child1、child2
                 child1 = crossover(parent1,parent2,order,manuTable)
                 child2 = crossover(parent2,parent1,order,manuTable)
+
+                # ST優化
+                child1 = st_calculation(child1,order,dailySheet,lineTable)
+                child2 = st_calculation(child2,order,dailySheet,lineTable)
+
+                # 換線優化
+                child1 = setupTimeOpti(child1,order,lineTable,dailySheet,fillTable_path)
+                child2 = setupTimeOpti(child2,order,lineTable,dailySheet,fillTable_path)
 
                 # 依照出貨日期進行排序
                 # child1 = sort_by_dueDay(child1,order)
@@ -1045,11 +1142,11 @@ def main():
     print(f'[{round(time.process_time(),2)}s] 輸出最佳解...')
     best_ind = None
     best_fit = 0
-    for individual in feasib_ok:
-        fitness = fitness_evaluate(individual,order,lineTable)
+    for ind in feasib_ok:
+        fitness = fitness_evaluate(ind,order,lineTable)
         if fitness>best_fit:
             best_fit = fitness
-            best_ind = individual
+            best_ind = ind
     
     print(f"setup time:{1/best_fit}")
     output(best_ind,order,lineTable,dailySheet,fillTable_path,LOST)

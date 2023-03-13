@@ -5,7 +5,6 @@ import math
 import datetime
 import openpyxl
 from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font,PatternFill,Alignment,Border,Side
 import os
 
@@ -565,110 +564,4 @@ def move_to_bottom(df,index):
     df = df.sort_values("new").drop('new', axis=1)
 
     return df
-
-#換線順序調整
-def dfimization(lineTable,df,crt,next):
-
-    #0. 拆出兩日工單
-    df.drop(crt.index,inplace=True)
-    df.drop(next.index,inplace=True)
-    crt_tag_1 = crt[crt['tag']==1]
-    crt_tag_0 = crt[crt['tag']==0]
-
-    #1. 對今日tag_0及下一天排序
-    crt_tag_0 = crt_tag_0.sort_values('類型')
-    crt = pd.concat([crt_tag_1,crt_tag_0])
-    next = next.sort_values('類型')
-
-
-    #2. 從tag_0中尋找今明最多類型  #! 先不管tag 直接全部一起判斷 評估哪種做法比較好
-    # crtType = list(dict.fromkeys(crt_tag_0['類型'].tolist()))
-    crtType = list(dict.fromkeys(crt['類型'].tolist()))
-
-    nextType = next['類型'].tolist()
-    most = None
-    max = 0
-
-    for t in crtType:
-        if nextType.count(t)>max:
-            max = nextType.count(t)
-            most = t
-
-    #都沒有相同類型就找最小換線時間
-    if most is None:
-        nextType = list(dict.fromkeys(nextType))
-
-        minTime = 999
-        minTypeCrt = None
-        minTypeNext = None
-
-        for i in crtType:
-            for j in nextType:
-                tmp = lineTable[i][j]
-                # print(i,j,tmp)
-                if tmp<minTime:
-                    minTime = tmp
-                    minTypeCrt = i
-                    minTypeNext = j
-
-        # print(minTime,minTypeCrt,minTypeNext)
-
-
-
-    #3. 移動最多類型或最小換線類型並標記tag為1
-    if most is not None:
-        for row in crt.index:
-            if crt['類型'][row]==most and crt['tag'][row]==0:
-                crt = move_to_bottom(crt,row)
-
-        for row in next.index:
-            if next['類型'][row]==most:
-                next=move_to_top(next,row)
-                next['tag'][row]=1
-    else:
-        for row in crt.index:
-            if crt['類型'][row]==minTypeCrt and crt['tag'][row]==0:
-                crt = move_to_bottom(crt,row)
-
-        for row in next.index:
-            if next['類型'][row]==minTypeNext:
-                next=move_to_top(next,row)
-                next['tag'][row]=1
-
-    #3. 移動最多類型並標記tag為1
-    if most!=None:
-        for row in crt.index:
-            if crt['類型'][row]==most and crt['tag'][row]==0:
-
-                crt = move_to_bottom(crt,row)
-
-        for row in next.index:
-            if next['類型'][row]==most:
-                next=move_to_top(next,row)
-                next['tag'][row]=1
-
-
-
-    #4. 合併回df
-
-    #先將這兩天合併並且重新給index
-    tmp = pd.concat([crt,next])
-    tmp.index = range(tmp.index.min(),tmp.index.max()+1,1)
-    #連接原df後再以index排序，讓它排到正確的索引
-    df = pd.concat([tmp,df])
-    df = df.sort_index()
-
-
-    # print('test:',crt['日期'][crt.index[0]],'、',next['日期'][next.index[0]])
-    # for i in crt.index:
-    #     print(i,crt['製令編號'][i],crt['日期'][i],'\t',crt['類型'][i],'\t',crt['tag'][i],)
-    # print()
-    # for i in next.index:
-    #     print(i,next['製令編號'][i],next['日期'][i],'\t',next['類型'][i],'\t',next['tag'][i],)
-    # print()
-
-
-
-    return df
-
 
